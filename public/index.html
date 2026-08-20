@@ -1,0 +1,425 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>KAISOUL CHAT 🐬</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="/socket.io/socket.io.js"></script>
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+  <style>
+    .glass { background: rgba(255, 255, 255, 0.85); backdrop-filter: blur(12px); }
+    .chat-bg { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); }
+    .custom-scrollbar::-webkit-scrollbar { width: 6px; }
+    .custom-scrollbar::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.15); border-radius: 10px; }
+  </style>
+</head>
+<body class="bg-slate-100 font-sans h-screen flex flex-col justify-between overflow-hidden">
+
+  <!-- AUTH SECTION (Đăng ký / Đăng nhập / OTP) -->
+  <div id="authContainer" class="fixed inset-0 z-50 chat-bg flex items-center justify-center p-4">
+    <div class="bg-white rounded-3xl shadow-2xl w-full max-w-md p-6 relative overflow-hidden">
+      
+      <!-- LOGO -->
+      <div class="text-center mb-6">
+        <h1 class="text-3xl font-extrabold text-indigo-600 tracking-wider">KAISOUL CHAT 🐬</h1>
+        <p class="text-xs text-gray-400 mt-1">Kết nối Gen Z — Trò chuyện không giới hạn</p>
+      </div>
+
+      <!-- FORM LOGIN -->
+      <form id="loginForm" class="space-y-4">
+        <h2 class="text-xl font-bold text-gray-800 text-center mb-2">Đăng Nhập</h2>
+        <input type="email" id="loginEmail" placeholder="Email của bạn" required class="w-full px-4 py-3 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-500">
+        <input type="password" id="loginPassword" placeholder="Mật khẩu" required class="w-full px-4 py-3 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-500">
+        <button type="submit" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-3 rounded-xl shadow-lg transition">Đăng Nhập</button>
+        
+        <div class="text-center mt-4">
+          <span class="text-xs text-gray-500">Chưa có tài khoản? </span>
+          <button type="button" onclick="switchAuthMode('register')" class="text-xs font-bold text-indigo-600 hover:underline">Đăng ký ngay</button>
+        </div>
+      </form>
+
+      <!-- FORM REGISTER -->
+      <form id="registerForm" class="space-y-4 hidden">
+        <h2 class="text-xl font-bold text-gray-800 text-center mb-2">Đăng Ký Tài Khoản</h2>
+        <input type="text" id="regName" placeholder="Tên hiển thị" required class="w-full px-4 py-3 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-500">
+        <input type="email" id="regEmail" placeholder="Email" required class="w-full px-4 py-3 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-500">
+        <input type="password" id="regPassword" placeholder="Mật khẩu" required class="w-full px-4 py-3 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-500">
+        <input type="password" id="regConfirmPassword" placeholder="Xác nhận mật khẩu" required class="w-full px-4 py-3 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-500">
+        <button type="submit" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-3 rounded-xl shadow-lg transition">Tiếp Tục</button>
+        
+        <div class="text-center mt-4">
+          <span class="text-xs text-gray-500">Đã có tài khoản? </span>
+          <button type="button" onclick="switchAuthMode('login')" class="text-xs font-bold text-indigo-600 hover:underline">Đăng nhập</button>
+        </div>
+      </form>
+
+      <!-- FORM OTP -->
+      <form id="otpForm" class="space-y-4 hidden">
+        <h2 class="text-xl font-bold text-gray-800 text-center mb-1">Xác Minh Mã OTP</h2>
+        <p class="text-xs text-center text-gray-500 mb-4">Nhập mã OTP đã được gửi tới email của bạn</p>
+        <input type="text" id="otpCode" maxlength="6" placeholder="Mã 6 chữ số" required class="w-full px-4 py-3 text-center tracking-widest text-xl font-bold rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-500">
+        <button type="submit" class="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-semibold py-3 rounded-xl shadow-lg transition">Xác Nhận OTP</button>
+        <button type="button" onclick="resendOtp()" class="w-full text-xs text-indigo-600 hover:underline text-center block">Gửi lại mã OTP</button>
+      </form>
+
+      <!-- ERROR / SUCCESS NOTIFICATION -->
+      <div id="authAlert" class="mt-4 hidden p-3 rounded-xl text-xs text-center font-medium"></div>
+    </div>
+  </div>
+
+  <!-- MAIN APP CONTAINER -->
+  <div id="appContainer" class="flex-1 flex overflow-hidden">
+
+    <!-- SIDEBAR / DANH SÁCH BẠN BÈ -->
+    <div class="w-full md:w-80 bg-white border-r border-gray-200 flex flex-col h-full">
+      
+      <!-- HEADER SIDEBAR -->
+      <div class="p-4 border-b border-gray-100 flex items-center justify-between">
+        <div class="flex items-center space-x-3">
+          <img id="myAvatar" class="w-10 h-10 rounded-full border-2 border-indigo-500" src="" alt="Avatar">
+          <div>
+            <h3 id="myName" class="font-bold text-gray-800 text-sm leading-tight">User</h3>
+            <span class="text-xs text-emerald-500 font-medium">● Đang hoạt động</span>
+          </div>
+        </div>
+        <button onclick="logout()" class="text-gray-400 hover:text-red-500 p-2"><i class="fa-solid fa-right-from-bracket"></i></button>
+      </div>
+
+      <!-- TÌM KIẾM BẠN BÈ -->
+      <div class="p-3">
+        <div class="relative">
+          <input type="text" id="searchInput" onkeyup="searchUsers()" placeholder="Tìm bạn bè..." class="w-full pl-9 pr-4 py-2 bg-slate-100 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400">
+          <i class="fa-solid fa-magnifying-glass absolute left-3 top-3 text-gray-400 text-xs"></i>
+        </div>
+      </div>
+
+      <!-- DANH SÁCH BẠN BÈ -->
+      <div id="friendsList" class="flex-1 overflow-y-auto custom-scrollbar divide-y divide-gray-50">
+        <!-- Friends load dynamically -->
+      </div>
+    </div>
+
+    <!-- MAIN CHAT AREA -->
+    <div id="chatArea" class="hidden md:flex flex-1 flex-col h-full bg-slate-50 relative">
+      
+      <!-- HEADER CHAT -->
+      <div id="chatHeader" class="p-4 bg-white border-b border-gray-200 flex items-center justify-between">
+        <div class="flex items-center space-x-3">
+          <img id="activeFriendAvatar" class="w-10 h-10 rounded-full border" src="" alt="">
+          <div>
+            <h4 id="activeFriendName" class="font-bold text-gray-800 text-sm">Chọn bạn bè để nhắn tin</h4>
+            <span id="activeFriendStatus" class="text-xs text-gray-400">Chưa chọn</span>
+          </div>
+        </div>
+        <button onclick="openProfileModal()" class="text-gray-500 hover:text-indigo-600 p-2"><i class="fa-solid fa-circle-info"></i></button>
+      </div>
+
+      <!-- LỊCH SỬ TIN NHẮN -->
+      <div id="messagesList" class="flex-1 p-4 overflow-y-auto custom-scrollbar space-y-3">
+        <div class="text-center text-gray-400 text-xs my-10">Hãy chọn một đoạn chat để bắt đầu trò chuyện 🐬</div>
+      </div>
+
+      <!-- THANH NHẬP TIN NHẮN -->
+      <form id="messageForm" onsubmit="sendMessage(event)" class="p-3 bg-white border-t border-gray-200 flex items-center space-x-2">
+        <input type="text" id="messageInput" placeholder="Nhắn tin..." autocomplete="off" class="flex-1 px-4 py-2 bg-slate-100 rounded-full text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400">
+        <button type="submit" class="w-10 h-10 bg-indigo-600 hover:bg-indigo-700 text-white rounded-full flex items-center justify-center transition shadow-md">
+          <i class="fa-solid fa-paper-plane text-xs"></i>
+        </button>
+      </form>
+    </div>
+  </div>
+
+  <!-- MODAL PROFILE & COVER PHOTO -->
+  <div id="profileModal" class="fixed inset-0 z-50 bg-black/50 hidden flex items-center justify-center p-4">
+    <div class="bg-white rounded-3xl max-w-sm w-full overflow-hidden shadow-2xl relative">
+      <button onclick="closeProfileModal()" class="absolute top-3 right-3 bg-black/30 hover:bg-black/50 text-white w-8 h-8 rounded-full flex items-center justify-center z-10"><i class="fa-solid fa-xmark"></i></button>
+      
+      <!-- COVER IMAGE -->
+      <div class="h-32 bg-indigo-100 relative group">
+        <img id="profileCoverImg" class="w-full h-full object-cover" src="https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe" alt="Cover">
+        <label for="coverInput" class="absolute inset-0 bg-black/30 opacity-0 group-hover:opacity-100 flex items-center justify-center text-white text-xs cursor-pointer transition">
+          <i class="fa-solid fa-camera mr-1"></i> Đổi ảnh bìa
+        </label>
+        <input type="file" id="coverInput" class="hidden" accept="image/*" onchange="uploadCover(event)">
+      </div>
+
+      <div class="p-4 pt-0 text-center relative">
+        <img id="profileAvatarImg" class="w-20 h-20 rounded-full border-4 border-white shadow-md mx-auto -mt-10 mb-2 relative z-10 bg-white" src="" alt="Avatar">
+        <h3 id="profileDisplayName" class="font-bold text-gray-800">User Name</h3>
+        <p id="profileEmail" class="text-xs text-gray-400">user@kaisoul.chat</p>
+        <p id="profileBio" class="text-xs text-gray-600 mt-2 px-4">Bio user...</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- CLIENT JAVASCRIPT LOGIC -->
+  <script>
+    let socket;
+    let currentUser = null;
+    let activeFriend = null;
+    let currentAuthEmail = '';
+
+    // Khởi tạo ứng dụng khi load trang
+    window.addEventListener('DOMContentLoaded', async () => {
+      await checkAuth();
+    });
+
+    async function checkAuth() {
+      try {
+        const res = await fetch('/api/auth/me');
+        const data = await res.json();
+        if (data.success) {
+          currentUser = data.user;
+          initApp();
+        } else {
+          showAuthUI();
+        }
+      } catch (e) {
+        showAuthUI();
+      }
+    }
+
+    function showAuthUI() {
+      document.getElementById('authContainer').classList.remove('hidden');
+    }
+
+    function initApp() {
+      document.getElementById('authContainer').classList.add('hidden');
+      document.getElementById('myAvatar').src = currentUser.avatar_url;
+      document.getElementById('myName').innerText = currentUser.display_name;
+
+      // Kết nối Socket.IO
+      socket = io();
+
+      socket.on('receive_message', (msg) => {
+        if (activeFriend && (msg.sender_id === activeFriend.id || msg.receiver_id === activeFriend.id)) {
+          appendMessage(msg);
+        }
+      });
+
+      socket.on('message_sent', (msg) => {
+        if (activeFriend && msg.receiver_id === activeFriend.id) {
+          appendMessage(msg);
+        }
+      });
+
+      loadFriendsList();
+    }
+
+    // AUTH SWITCHERS
+    function switchAuthMode(mode) {
+      document.getElementById('loginForm').classList.add('hidden');
+      document.getElementById('registerForm').classList.add('hidden');
+      document.getElementById('otpForm').classList.add('hidden');
+      showAlert('');
+
+      if (mode === 'login') document.getElementById('loginForm').classList.remove('hidden');
+      if (mode === 'register') document.getElementById('registerForm').classList.remove('hidden');
+      if (mode === 'otp') document.getElementById('otpForm').classList.remove('hidden');
+    }
+
+    function showAlert(msg, isError = true) {
+      const el = document.getElementById('authAlert');
+      if (!msg) { el.classList.add('hidden'); return; }
+      el.classList.remove('hidden', 'bg-red-100', 'text-red-600', 'bg-emerald-100', 'text-emerald-600');
+      el.classList.add(isError ? 'bg-red-100' : 'bg-emerald-100', isError ? 'text-red-600' : 'text-emerald-600');
+      el.innerText = msg;
+    }
+
+    // API AUTH ACTIONS
+    document.getElementById('loginForm').onsubmit = async (e) => {
+      e.preventDefault();
+      const email = document.getElementById('loginEmail').value;
+      const password = document.getElementById('loginPassword').value;
+
+      const res = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password })
+      });
+      const data = await res.json();
+
+      if (data.success) {
+        currentUser = data.user;
+        initApp();
+      } else if (data.unverified) {
+        currentAuthEmail = email;
+        switchAuthMode('otp');
+        showAlert('Tài khoản chưa được xác minh. Hãy nhập OTP.', false);
+      } else {
+        showAlert(data.message);
+      }
+    };
+
+    document.getElementById('registerForm').onsubmit = async (e) => {
+      e.preventDefault();
+      const displayName = document.getElementById('regName').value;
+      const email = document.getElementById('regEmail').value;
+      const password = document.getElementById('regPassword').value;
+      const confirmPassword = document.getElementById('regConfirmPassword').value;
+
+      const res = await fetch('/api/auth/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ displayName, email, password, confirmPassword })
+      });
+      const data = await res.json();
+
+      if (data.success) {
+        currentAuthEmail = email;
+        switchAuthMode('otp');
+        showAlert(data.message, false);
+      } else {
+        showAlert(data.message);
+      }
+    };
+
+    document.getElementById('otpForm').onsubmit = async (e) => {
+      e.preventDefault();
+      const code = document.getElementById('otpCode').value;
+
+      const res = await fetch('/api/auth/verify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: currentAuthEmail, code })
+      });
+      const data = await res.json();
+
+      if (data.success) {
+        currentUser = data.user;
+        initApp();
+      } else {
+        showAlert(data.message);
+      }
+    };
+
+    async function resendOtp() {
+      const res = await fetch('/api/auth/resend-otp', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: currentAuthEmail })
+      });
+      const data = await res.json();
+      showAlert(data.message, !data.success);
+    }
+
+    async function logout() {
+      await fetch('/api/auth/logout', { method: 'POST' });
+      window.location.reload();
+    }
+
+    // LOAD DANH SÁCH BẠN BÈ
+    async function loadFriendsList() {
+      const res = await fetch('/api/friends');
+      const data = await res.json();
+      if (data.success) renderFriends(data.friends);
+    }
+
+    function renderFriends(friends) {
+      const container = document.getElementById('friendsList');
+      container.innerHTML = '';
+      friends.forEach(f => {
+        const item = document.createElement('div');
+        item.className = 'p-3 flex items-center space-x-3 hover:bg-slate-50 cursor-pointer transition';
+        item.onclick = () => selectFriend(f);
+        item.innerHTML = `
+          <img class="w-10 h-10 rounded-full border" src="${f.avatar_url}" alt="">
+          <div class="flex-1 min-w-0">
+            <h5 class="text-sm font-bold text-gray-800 truncate">${f.display_name}</h5>
+            <p class="text-xs text-gray-400 truncate">${f.bio || 'Chưa có tiểu sử'}</p>
+          </div>
+        `;
+        container.appendChild(item);
+      });
+    }
+
+    async function searchUsers() {
+      const q = document.getElementById('searchInput').value;
+      if (!q) return loadFriendsList();
+      const res = await fetch(`/api/users/search?q=${encodeURIComponent(q)}`);
+      const data = await res.json();
+      if (data.success) renderFriends(data.users);
+    }
+
+    // LỰA CHỌN BẠN BÈ & CHAT
+    async function selectFriend(friend) {
+      activeFriend = friend;
+      document.getElementById('chatArea').classList.remove('hidden');
+      document.getElementById('activeFriendName').innerText = friend.display_name;
+      document.getElementById('activeFriendAvatar').src = friend.avatar_url;
+      document.getElementById('activeFriendStatus').innerText = 'Đang trực tuyến';
+
+      const res = await fetch(`/api/messages/${friend.id}`);
+      const data = await res.json();
+      
+      const list = document.getElementById('messagesList');
+      list.innerHTML = '';
+      if (data.success) {
+        data.messages.forEach(appendMessage);
+      }
+    }
+
+    function appendMessage(msg) {
+      const list = document.getElementById('messagesList');
+      const isMe = msg.sender_id === currentUser.id;
+      const wrap = document.createElement('div');
+      wrap.className = `flex ${isMe ? 'justify-end' : 'justify-start'}`;
+      wrap.innerHTML = `
+        <div class="max-w-xs px-4 py-2 rounded-2xl text-sm ${isMe ? 'bg-indigo-600 text-white rounded-br-none' : 'bg-white text-gray-800 border rounded-bl-none shadow-sm'}">
+          ${msg.content}
+        </div>
+      `;
+      list.appendChild(wrap);
+      list.scrollTop = list.scrollHeight;
+    }
+
+    function sendMessage(e) {
+      e.preventDefault();
+      const input = document.getElementById('messageInput');
+      const content = input.value.trim();
+      if (!content || !activeFriend) return;
+
+      socket.emit('send_message', {
+        receiverId: activeFriend.id,
+        content
+      });
+
+      input.value = '';
+    }
+
+    // MODAL & PROFILE
+    function openProfileModal() {
+      const target = activeFriend || currentUser;
+      document.getElementById('profileDisplayName').innerText = target.display_name;
+      document.getElementById('profileEmail').innerText = target.email;
+      document.getElementById('profileBio').innerText = target.bio || '';
+      document.getElementById('profileAvatarImg').src = target.avatar_url;
+      if (target.cover_url) document.getElementById('profileCoverImg').src = target.cover_url;
+      
+      document.getElementById('profileModal').classList.remove('hidden');
+    }
+
+    function closeProfileModal() {
+      document.getElementById('profileModal').classList.add('hidden');
+    }
+
+    async function uploadCover(e) {
+      const file = e.target.files[0];
+      if (!file) return;
+
+      const formData = new FormData();
+      formData.append('cover', file);
+
+      const res = await fetch('/api/users/cover', {
+        method: 'POST',
+        body: formData
+      });
+      const data = await res.json();
+      if (data.success) {
+        document.getElementById('profileCoverImg').src = data.cover_url;
+      }
+    }
+  </script>
+</body>
+</html>
